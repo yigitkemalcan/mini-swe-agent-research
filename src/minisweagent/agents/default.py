@@ -4,8 +4,10 @@ or https://minimal-agent.com for a tutorial on the basic building principles.
 
 import json
 import logging
+import sys
 import time
 import traceback
+from contextlib import contextmanager
 from pathlib import Path
 
 from jinja2 import StrictUndefined, Template
@@ -46,6 +48,7 @@ class DefaultAgent:
         self.logger = logging.getLogger("agent")
         self.cost = 0.0
         self.n_calls = 0
+        self.step_timings: list[dict] = []
         self.n_consecutive_format_errors = 0
         self._start_time = time.time()
 
@@ -146,21 +149,42 @@ class DefaultAgent:
                 }
             )
         self.n_calls += 1
-        message = self.model.query(self.messages)
+        timing = {"step": self.n_calls, "inference": {}, "tools": []}
+        self.step_timings.append(timing)
+        with self._measure_call(timing["inference"]):
+            message = self.model.query(self.messages)
         self.cost += message.get("extra", {}).get("cost", 0.0)
         self.add_messages(message)
         return message
 
     def execute_actions(self, message: dict) -> list[dict]:
         """Execute actions in message, add observation messages, return them."""
-        outputs = [self.env.execute(action) for action in message.get("extra", {}).get("actions", [])]
+        outputs = []
+        for index, action in enumerate(message.get("extra", {}).get("actions", []), start=1):
+            timing = {"action": index}
+            if self.step_timings:
+                self.step_timings[-1]["tools"].append(timing)
+            with self._measure_call(timing):
+                outputs.append(self.env.execute(action))
         return self.add_messages(*self.model.format_observation_messages(message, outputs, self.get_template_vars()))
+
+    @staticmethod
+    @contextmanager
+    def _measure_call(timing: dict):
+        timing["start_mono_ns"] = time.monotonic_ns()
+        try:
+            yield
+        finally:
+            timing["end_mono_ns"] = time.monotonic_ns()
+            timing["elapsed_s"] = (timing["end_mono_ns"] - timing["start_mono_ns"]) / 1e9
+            timing["outcome"] = sys.exc_info()[0].__name__ if sys.exc_info()[0] else "returned"
 
     def serialize(self, *extra_dicts) -> dict:
         """Serialize agent state to a json-compatible nested dictionary for saving."""
         last_message = self.messages[-1] if self.messages else {}
         last_extra = last_message.get("extra", {})
         agent_data = {
+            "step_timings": self.step_timings,
             "info": {
                 "model_stats": {
                     "instance_cost": self.cost,

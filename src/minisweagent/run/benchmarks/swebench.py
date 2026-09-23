@@ -142,8 +142,11 @@ def process_instance(
     result = None
     extra_info = {}
 
+    task_start_ns = time.monotonic_ns()
+    environment_ready_ns = None
     try:
         env = get_sb_environment(config, instance)
+        environment_ready_ns = time.monotonic_ns()
         agent = ProgressTrackingAgent(
             model,
             env,
@@ -159,6 +162,7 @@ def process_instance(
         exit_status, result = type(e).__name__, ""
         extra_info = {"traceback": traceback.format_exc(), "exception_str": str(e)}
     finally:
+        task_end_ns = time.monotonic_ns()
         if agent is not None:
             traj_path = instance_dir / f"{instance_id}.traj.json"
             agent.save(
@@ -167,6 +171,11 @@ def process_instance(
                     "info": {
                         "exit_status": exit_status,
                         "submission": result,
+                        "task_timing": {
+                            "start_mono_ns": task_start_ns,
+                            "environment_ready_mono_ns": environment_ready_ns,
+                            "end_mono_ns": task_end_ns,
+                        },
                         **extra_info,
                     },
                     "instance_id": instance_id,
