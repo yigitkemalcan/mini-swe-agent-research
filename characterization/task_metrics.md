@@ -12,7 +12,10 @@ Generate empirical CDFs after analysis:
     python characterization/visual/plot_task_metrics.py RUN_DIRECTORY
 
 This writes task_metrics/plots/task_steps_cdf, task_resources_cdf and step_times_cdf
-in PNG format, plus cdf_summary.json with exact CDF coordinates/counts.
+in PNG format, plus a compact cdf_summary.json table with counts,
+excluded counts, average, p50, and p99 for each series. Percentiles use linear
+interpolation; each task (or step for timings) has equal weight. Exact CDF
+coordinates are stored separately in cdf_data.json.
 Task resource plots include separate average/peak curves for CPU and memory.
 Every task has equal weight in task plots; every timed step has equal weight in
 timing plots, including failed model calls and zero-tool steps. Nonfinite values
